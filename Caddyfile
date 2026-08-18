@@ -1,0 +1,38 @@
+{
+	# Default para que um .env sem ACME_EMAIL não impeça o Caddy de subir.
+	# O endereço só recebe os avisos de expiração da Let's Encrypt — troque
+	# pelo real no .env.
+	email {$ACME_EMAIL:contato@hsjnovaera.com.br}
+}
+
+api.hsjnovaera.com.br {
+	encode gzip zstd
+
+	# Espelha o MultipartBodyLengthLimit de 26 MB do Program.cs. Se os dois
+	# valores divergirem, o upload é cortado aqui e a API nem é chamada.
+	request_body {
+		max_size 26MB
+	}
+
+	reverse_proxy api:8080
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+hsjnovaera.com.br {
+	encode gzip zstd
+	reverse_proxy web:8080
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+# Um endereço canônico só: evita o mesmo conteúdo indexado em dois domínios.
+www.hsjnovaera.com.br {
+	redir https://hsjnovaera.com.br{uri} permanent
+}

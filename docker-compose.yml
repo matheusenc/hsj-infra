@@ -1,0 +1,74 @@
+name: hsj
+
+# As imagens da API e do site são construídas pelo GitHub Actions e publicadas
+# no GHCR. Aqui só se declara qual usar — a VPS nunca compila nada.
+# Para voltar a uma versão anterior, troque a tag em API_TAG/WEB_TAG no .env
+# pelo sha curto do build desejado (ex.: sha-1a2b3c4).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Sem 'ports': o banco fica só na rede interna do Docker. Quem o acessa é
+    # a API, no mesmo host. Publicar a 5432 o exporia à internet.
+    healthcheck:
+      # A API roda MigrateUp() no boot e não tem retry: sem esperar o banco
+      # ficar pronto, o container dela morre em toda subida limpa.
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api:
+    image: ghcr.io/${GHCR_OWNER}/hsj-api:${API_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ReverseProxy__Enabled: 'true'
+      ConnectionStrings__DbConnection: 'Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}'
+      Jwt__SigningKey: ${JWT_SIGNING_KEY}
+      Jwt__ExpirationTimeMinutes: ${JWT_EXPIRATION_MINUTES:-60}
+      FileStorage__RootPath: /var/hsj/storage
+      Seed__AdminName: ${SEED_ADMIN_NAME}
+      Seed__AdminEmail: ${SEED_ADMIN_EMAIL}
+      Seed__AdminPassword: ${SEED_ADMIN_PASSWORD}
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN_SITE}
+    volumes:
+      # Os PDFs de transparência vivem aqui. Perder este volume é perda real.
+      - documents_data:/var/hsj/storage
+
+  web:
+    image: ghcr.io/${GHCR_OWNER}/hsj-web:${WEB_TAG:-latest}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificados — perder este volume refaz a emissão
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  documents_data:
+  caddy_data:
+  caddy_config:
