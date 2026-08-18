@@ -45,10 +45,14 @@ Adicionar duas regras de ingresso:
 |---|---|---|
 | `0.0.0.0/0` | TCP | `80` |
 | `0.0.0.0/0` | TCP | `443` |
+| `SEU_IP/32` | TCP | `5432` |
 
-**Remover a regra que libera a 5432.** Ela existe hoje e deixava o Postgres de
-teste acessível pela internet — confirmado por teste externo. No desenho novo o
-banco não publica porta nenhuma, então a regra só representa risco.
+A regra da `5432` existe porque o banco é acessado também do PC de
+desenvolvimento. **Restrinja o Source ao seu IP** (`https://ifconfig.me` mostra
+qual é) em vez de `0.0.0.0/0`: com `0.0.0.0/0` o Postgres fica exposto à
+internet inteira e passa a depender só da força da senha — varredura de 5432 é
+constante. Se o seu IP for dinâmico e a regra viver desatualizando, o caminho
+sem exposição nenhuma é o túnel SSH do §9.
 
 > Se a instância usa Network Security Group em vez de Security List, as mesmas
 > mudanças vão no NSG.
@@ -120,8 +124,8 @@ openssl rand -base64 24    # POSTGRES_PASSWORD
 openssl rand -base64 48    # JWT_SIGNING_KEY
 ```
 
-Preencha `GHCR_OWNER`, as duas chaves acima, `SEED_ADMIN_PASSWORD` e
-`ACME_EMAIL`:
+Preencha `GHCR_OWNER`, as duas chaves acima, `SEED_ADMIN_PASSWORD`,
+`ACME_EMAIL` e `POSTGRES_BIND` (veja §9):
 
 ```bash
 nano .env
@@ -277,6 +281,43 @@ Só depois dos certificados já emitidos.
 O plano gratuito limita upload a 100 MB, acima dos 26 MB da API — sem conflito.
 Se a renovação do certificado falhar mais para frente, volte para DNS only,
 deixe o Caddy renovar e religue.
+
+---
+
+## 9. Conectar no banco a partir do PC
+
+O `docker-compose.yml` publica a `5432` na interface definida por
+`POSTGRES_BIND` (padrão `0.0.0.0`). Com a regra do §1 liberada para o seu IP, a
+string de conexão no Windows é:
+
+```
+Host=137.131.248.218;Port=5432;Database=hsjdb;Username=hsj;Password=SUA_SENHA
+```
+
+O `appsettings.Development.json` do back-end aponta para `localhost` — troque o
+host ali, ou melhor, mantenha o arquivo como está e crie um
+`appsettings.Local.json` (já ignorado pelo git) com a string acima.
+
+> **É o mesmo banco de produção.** Uma migration que você rodar localmente, um
+> `DELETE` sem `WHERE` ou um teste que limpa tabelas atinge os dados reais do
+> site. Para desenvolvimento do dia a dia, um Postgres local em container custa
+> um comando e evita esse risco:
+>
+> ```powershell
+> docker run -d --name hsj-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16-alpine
+> ```
+
+### Alternativa sem expor a porta
+
+Com `POSTGRES_BIND=127.0.0.1` no `.env` (e nenhuma regra de `5432` na Security
+List), o banco não fica acessível pela internet. Do Windows, abra um túnel:
+
+```powershell
+ssh -i C:\dev\hsj\ssh-key-2026-06-29.key -L 5432:127.0.0.1:5432 ubuntu@137.131.248.218 -N
+```
+
+Enquanto o túnel estiver aberto, conecte em `Host=localhost;Port=5432`. Não
+depende do seu IP ser fixo e não deixa a porta visível para varredura.
 
 ---
 

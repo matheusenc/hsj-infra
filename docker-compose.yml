@@ -15,8 +15,14 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    # Sem 'ports': o banco fica só na rede interna do Docker. Quem o acessa é
-    # a API, no mesmo host. Publicar a 5432 o exporia à internet.
+    ports:
+      # Publicada a pedido, para o PC de desenvolvimento usar este mesmo banco.
+      # Quem controla o acesso é a Security List da Oracle (§1 do DEPLOY.md):
+      # o Docker publica portas por uma cadeia do iptables que o ufw não vê,
+      # então regra de ufw para a 5432 não tem efeito.
+      # Para fechar a exposição sem editar este arquivo, ponha
+      # POSTGRES_BIND=127.0.0.1 no .env e chegue pelo túnel SSH.
+      - '${POSTGRES_BIND:-0.0.0.0}:5432:5432'
     healthcheck:
       # A API roda MigrateUp() no boot e não tem retry: sem esperar o banco
       # ficar pronto, o container dela morre em toda subida limpa.
