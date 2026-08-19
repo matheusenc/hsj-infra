@@ -294,9 +294,20 @@ string de conexão no Windows é:
 Host=137.131.248.218;Port=5432;Database=hsjdb;Username=hsj;Password=SUA_SENHA
 ```
 
-O `appsettings.Development.json` do back-end aponta para `localhost` — troque o
-host ali, ou melhor, mantenha o arquivo como está e crie um
-`appsettings.Local.json` (já ignorado pelo git) com a string acima.
+O `appsettings.Development.json` do back-end aponta para `localhost` e está
+versionado — editá-lo comitaria a senha do banco da VPS. Guarde a string nos
+user secrets, que ficam fora do repositório:
+
+```powershell
+cd C:\dev\hsj\hsj-back-end\src\Backend\HospitalSaoJose.Api
+dotnet user-secrets init
+dotnet user-secrets set "ConnectionStrings:DbConnection" "Host=137.131.248.218;Port=5432;Database=hsjdb;Username=hsj;Password=SUA_SENHA"
+```
+
+Os user secrets têm precedência sobre o `appsettings.Development.json` e vivem
+em `%APPDATA%\Microsoft\UserSecrets`. O `dotnet user-secrets init` grava um
+`UserSecretsId` no `.csproj` — esse identificador pode ser comitado, o segredo
+em si nunca sai da sua máquina.
 
 > **É o mesmo banco de produção.** Uma migration que você rodar localmente, um
 > `DELETE` sem `WHERE` ou um teste que limpa tabelas atinge os dados reais do
